@@ -10,6 +10,7 @@ plot_canvas.height = plot_height;
 // socket init //
 
 const socket = new ReconnectingWebSocket("ws://127.0.0.1:24050/ws");
+const socketData = new ReconnectingWebSocket("ws://127.0.0.1:3388/ws");
 
 socket.onopen = () => {
 	console.log("Successfully Connected");
@@ -22,6 +23,19 @@ socket.onclose = event => {
 
 socket.onerror = error => {
 	console.log("Socket Error: ", error);
+};
+
+socketData.onopen = () => {
+	console.log("Successfully Connected to data socket");
+};
+
+socketData.onclose = event => {
+	console.log("Data Socket Closed Connection: ", event);
+	socketData.send("Client Closed!");
+};
+
+socketData.onerror = error => {
+	console.log("Data Socket Error: ", error);
 };
 
 // main //
@@ -156,7 +170,7 @@ const plot_options = {
 	}
 };
 
-if (result_only) plot_options.animation = false;
+plot_options.animation = false;
 
 let od_50_ms;
 let od_100_ms;
@@ -319,6 +333,7 @@ const draw_text = () => {
 	}
 };
 
+let plot_update = false;
 const plot_chart = new Chart(ctx, {
 	type: "scatter",
 	data: plot_data,
@@ -340,8 +355,8 @@ const mania_100 = od => 127 - (od * 3);
 const mania_50 = od => 151 - (od * 3);
 const mania_miss = od => 188 - (od * 3);
 
-const mania_hr_calc = value => Math.floor(value / 1.4);
-const mania_ez_calc = value => Math.floor(value * 1.4);
+const mania_hr_calc = value => value / 1.4;
+const mania_ez_calc = value => value * 1.4;
 
 const update_od_ms = (od, mods_num) => {
 	if ((mods_num & hr) == hr) {
@@ -388,12 +403,15 @@ const get_audio_end_drain = audio_path => new Promise((resolve, reject) => {
 
 let force_switch = false;
 
+let data = {};
+
 socket.onmessage = async event => {
 	//console.time("messageEvent");
 
 	const osu_status = JSON.parse(event.data);
 
 	const audio_path = "http://127.0.0.1:24050/Songs/" + encodeURIComponent(osu_status.menu.bm.path.folder + "/" + osu_status.menu.bm.path.audio);
+	
 	if (audio_path != current_audio_path && audio_base_plot) {
 		try {
 			current_audio_drain = await get_audio_end_drain(audio_path) * 1000;
@@ -425,9 +443,72 @@ socket.onmessage = async event => {
 	od_300_ms = 64.5 - (osu_status.menu.bm.stats.memoryOD * 3);
 	*/
 
-	if (osu_status.gameplay.hits.hitErrorArray) {
-		if (osu_status.gameplay.hits.hitErrorArray.length == 0) {
-			// hit_array = [];
+	if(!useOsuLiveDataExport) {
+		if (osu_status.gameplay.hits.hitErrorArray) {
+			if (osu_status.gameplay.hits.hitErrorArray.length == 0) {
+				// hit_array = [];
+
+				hit_miss_array = [];
+				hit_50_array = [];
+				hit_100_array = [];
+				hit_200_array = [];
+				hit_300_array = [];
+				hit_300g_array = [];
+			}
+			else {
+				const hitErrorArray = osu_status.gameplay.hits.hitErrorArray.slice(prev_hitErrorArray_length);
+
+				for (let i = 0; i < hitErrorArray.length; i++) {
+					const hitError = hitErrorArray[i];
+					//console.log(osu_status.menu.bm.time.current);
+					/*hit_array.push({
+						x: osu_status.menu.bm.time.current,
+						y: hitError
+					});*/
+
+					if (hitError <= od_300g_ms && hitError >= -(od_300g_ms)) {
+						hit_300g_array.push({
+							x: osu_status.menu.bm.time.current,
+							y: hitError
+						});
+					}
+					else if (hitError <= od_300_ms && hitError >= -(od_300_ms)) {
+						hit_300_array.push({
+							x: osu_status.menu.bm.time.current,
+							y: hitError
+						});
+					}
+					else if (hitError <= od_200_ms && hitError >= -(od_200_ms)) {
+						hit_200_array.push({
+							x: osu_status.menu.bm.time.current,
+							y: hitError
+						});
+					}
+					else if (hitError <= od_100_ms && hitError >= -(od_100_ms)) {
+						hit_100_array.push({
+							x: osu_status.menu.bm.time.current,
+							y: hitError
+						});
+					}
+					else if (hitError <= od_50_ms && hitError >= -(od_50_ms)) {
+						hit_50_array.push({
+							x: osu_status.menu.bm.time.current,
+							y: hitError
+						});
+					}
+					else {
+						hit_miss_array.push({
+							x: osu_status.menu.bm.time.current,
+							y: hitError
+						});
+					}
+				}
+
+				prev_hitErrorArray_length = osu_status.gameplay.hits.hitErrorArray.length;
+			}
+		}
+		else {
+			//hit_array = [];
 
 			hit_miss_array = [];
 			hit_50_array = [];
@@ -436,107 +517,121 @@ socket.onmessage = async event => {
 			hit_300_array = [];
 			hit_300g_array = [];
 		}
-		else {
-			const hitErrorArray = osu_status.gameplay.hits.hitErrorArray.slice(prev_hitErrorArray_length);
-			//console.log(hit_array);
 
-			for (let i = 0; i < hitErrorArray.length; i++) {
-				const hitError = hitErrorArray[i];
-				//console.log(osu_status.menu.bm.time.current);
-				/*hit_array.push({
-					x: osu_status.menu.bm.time.current,
-					y: hitError
-				});*/
+		if (osu_status.menu.state != 7 && osu_status.menu.state != 2) {
+			//hit_array = [];
 
-				if (hitError <= od_300g_ms && hitError >= -(od_300g_ms)) {
-					hit_300g_array.push({
-						x: osu_status.menu.bm.time.current,
-						y: hitError
-					});
-				}
-				else if (hitError <= od_300_ms && hitError >= -(od_300_ms)) {
-					hit_300_array.push({
-						x: osu_status.menu.bm.time.current,
-						y: hitError
-					});
-				}
-				else if (hitError <= od_200_ms && hitError >= -(od_200_ms)) {
-					hit_200_array.push({
-						x: osu_status.menu.bm.time.current,
-						y: hitError
-					});
-				}
-				else if (hitError <= od_100_ms && hitError >= -(od_100_ms)) {
-					hit_100_array.push({
-						x: osu_status.menu.bm.time.current,
-						y: hitError
-					});
-				}
-				else if (hitError <= od_50_ms && hitError >= -(od_50_ms)) {
-					hit_50_array.push({
-						x: osu_status.menu.bm.time.current,
-						y: hitError
-					});
-				}
-				else {
-					hit_miss_array.push({
-						x: osu_status.menu.bm.time.current,
-						y: hitError
-					});
-				}
-			}
+			hit_miss_array = [];
+			hit_50_array = [];
+			hit_100_array = [];
+			hit_200_array = [];
+			hit_300_array = [];
+			hit_300g_array = [];
 
-			prev_hitErrorArray_length = osu_status.gameplay.hits.hitErrorArray.length;
+			prev_hitErrorArray_length = 0;
+
+			if (!always_show) plot_canvas.style.display = "none";
 		}
+		else {
+			if (((hit_300g_array.length + hit_300_array.length + hit_200_array.length + hit_100_array.length + hit_50_array.length + hit_miss_array.length) != 0 && osu_status.menu.state == 7) || (osu_status.menu.state == 2 && !result_only) || always_show) plot_canvas.style.display = "";
+		}
+
+		//plot_chart.data.datasets[0].data = hit_array;
+
+		plot_chart.data.datasets[0].data = hit_300g_array;
+		plot_chart.data.datasets[1].data = hit_300_array;
+		plot_chart.data.datasets[2].data = hit_200_array;
+		plot_chart.data.datasets[3].data = hit_100_array;
+		plot_chart.data.datasets[4].data = hit_50_array;
+		plot_chart.data.datasets[5].data = hit_miss_array;
+		if (etterna_mode) {
+			plot_chart.options.scales.yAxes[0].ticks.min = -(od_miss_ms);
+			plot_chart.options.scales.yAxes[0].ticks.max = od_miss_ms;
+		}
+		else {
+			plot_chart.options.scales.yAxes[0].ticks.min = -(od_50_ms);
+			plot_chart.options.scales.yAxes[0].ticks.max = od_50_ms;
+		}
+	} else {
+		GenerateFromReplay(osu_status);
 	}
-	else {
-		//hit_array = [];
-
-		hit_miss_array = [];
-		hit_50_array = [];
-		hit_100_array = [];
-		hit_200_array = [];
-		hit_300_array = [];
-		hit_300g_array = [];
-	}
-
-	if (osu_status.menu.state != 7 && osu_status.menu.state != 2) {
-		//hit_array = [];
-
-		hit_miss_array = [];
-		hit_50_array = [];
-		hit_100_array = [];
-		hit_200_array = [];
-		hit_300_array = [];
-		hit_300g_array = [];
-
-		prev_hitErrorArray_length = 0;
-
-		if (!always_show) plot_canvas.style.display = "none";
-	}
-	else {
-		if (((hit_300g_array.length + hit_300_array.length + hit_200_array.length + hit_100_array.length + hit_50_array.length + hit_miss_array.length) != 0 && osu_status.menu.state == 7) || (osu_status.menu.state == 2 && !result_only) || always_show) plot_canvas.style.display = "";
-	}
-
-	//plot_chart.data.datasets[0].data = hit_array;
-
-	plot_chart.data.datasets[0].data = hit_300g_array;
-	plot_chart.data.datasets[1].data = hit_300_array;
-	plot_chart.data.datasets[2].data = hit_200_array;
-	plot_chart.data.datasets[3].data = hit_100_array;
-	plot_chart.data.datasets[4].data = hit_50_array;
-	plot_chart.data.datasets[5].data = hit_miss_array;
-	if (etterna_mode) {
-		plot_chart.options.scales.yAxes[0].ticks.min = -(od_miss_ms);
-		plot_chart.options.scales.yAxes[0].ticks.max = od_miss_ms;
-	}
-	else {
-		plot_chart.options.scales.yAxes[0].ticks.min = -(od_50_ms);
-		plot_chart.options.scales.yAxes[0].ticks.max = od_50_ms;
-	}
-	plot_chart.update();
 
 	//console.timeEnd("messageEvent");
+	plot_update = true;
 };
 
-//console.timeEnd("init");
+socketData.onmessage = async event => {
+	try {
+	data = JSON.parse(event.data);
+	}catch(e){}
+}
+
+setInterval(() => {
+	if(plot_update) {
+		plot_chart.update()
+	}
+}, 50);
+
+console.timeEnd("init");
+
+let loaded_last=null;
+let beatmap=null;
+function GetBeatmapCache(song_path) {
+	return new Promise((resolve, reject) => {
+		if(beatmap != null && loaded_last == song_path) {
+			resolve();
+			return;
+		}
+		let bm_path = "http://127.0.0.1:24050/Songs/" + encodeURIComponent(song_path);
+
+		$.ajax({
+            url: bm_path,
+            type: "GET",
+            crossDomain: true,
+            success: function (response) {
+				loaded_last = song_path;
+				beatmap = response;
+				hit_objects = [];
+				parseHitObjects();
+				resolve();
+            },
+            error: function (xhr, status) {
+            }
+        });
+	})
+
+
+}
+
+let hit_objects = [];
+function parseHitObjects() {
+	let objects = false;
+	beatmap.split(/\r?\n/).forEach((line) => {
+		if(objects && line) {
+			let d = line.split(",");
+			let ln_end = false;
+
+			// usual osu format bullshit
+			let worst_idea_ever_to_mark_ln_end_please_peppy_why = d[5].split(":")
+			if(worst_idea_ever_to_mark_ln_end_please_peppy_why.length == 6) {
+				ln_end = worst_idea_ever_to_mark_ln_end_please_peppy_why[0];
+			}
+
+			hit_objects.push({
+				x: d[0],
+				y: d[1],
+				time: d[2],
+				ln: ln_end,
+				errors: []
+			})
+		}
+
+		if(line == "[HitObjects]") objects = true;
+	});
+	console.log(hit_objects);
+}
+
+function GenerateFromReplay(osu_status) {
+	GetBeatmapCache(osu_status.menu.bm.path.folder + "/" + osu_status.menu.bm.path.file).then(() => {
+	})
+}
