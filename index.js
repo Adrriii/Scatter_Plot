@@ -592,6 +592,8 @@ function GetBeatmapCache(song_path) {
 				loaded_last = song_path;
 				beatmap = response;
 				hit_objects = [];
+				replay_parse_index = 2;
+				replay_hits = [];
 				parseHitObjects();
 				resolve();
             },
@@ -631,7 +633,56 @@ function parseHitObjects() {
 	console.log(hit_objects);
 }
 
+let replay_parse_index = 2;
+let replay_hits = [];
 function GenerateFromReplay(osu_status) {
+	if(!data.hit_events) return;
+	
 	GetBeatmapCache(osu_status.menu.bm.path.folder + "/" + osu_status.menu.bm.path.file).then(() => {
+		let keys = osu_status.menu.bm.stats.memoryCS;
+		let state = 0;
+		
+		for(replay_parse_index; replay_parse_index < data.hit_events.length; replay_parse_index++) {
+			let event = data.hit_events[replay_parse_index];
+
+			if(event.X<100 && event.X>=0 && event.X != state) {
+				let previous = numToString(state, 2, keys);
+				let current = numToString(event.X, 2, keys);
+
+				for(let k = 0; k < keys; k++) {
+					let previous_k = previous.charAt(k);
+					let current_k = current.charAt(k);
+
+					if(previous_k != current_k) {
+						let hit = {
+							time: event.TimeStamp,
+							column: k
+						};
+						if(previous_k == 0) {
+							hit.type = "press";
+						} else {
+							hit.type = "release";
+						}
+						replay_hits.push(hit);
+						console.log(hit);
+					}
+				}
+				
+				state = event.X;
+			}
+		}
 	})
 }
+
+function padStart(string, length, char) {
+	return length > 0 ?
+	  padStart(char + string, --length, char) :
+	  string;
+  }
+  
+  function numToString(num, radix, length = num.length) {
+	const numString = num.toString(radix);
+	return numString.length === length ?
+	  numString :
+	  padStart(numString, length - numString.length, "0")
+  }
