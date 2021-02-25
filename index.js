@@ -409,6 +409,7 @@ socket.onmessage = async event => {
 	//console.time("messageEvent");
 
 	const osu_status = JSON.parse(event.data);
+	keys = osu_status.menu.bm.stats.memoryCS;
 
 	const audio_path = "http://127.0.0.1:24050/Songs/" + encodeURIComponent(osu_status.menu.bm.path.folder + "/" + osu_status.menu.bm.path.audio);
 	
@@ -517,8 +518,71 @@ socket.onmessage = async event => {
 			hit_300_array = [];
 			hit_300g_array = [];
 		}
+	} else {
+		GenerateFromReplay(osu_status);
 
-		if (osu_status.menu.state != 7 && osu_status.menu.state != 2) {
+		if (processed_hits) {
+			if (processed_hits.length == 0) {
+				// hit_array = [];
+
+				hit_miss_array = [];
+				hit_50_array = [];
+				hit_100_array = [];
+				hit_200_array = [];
+				hit_300_array = [];
+				hit_300g_array = [];
+			}
+			else {
+				for (let i = 0; i < processed_hits.length; i++) {
+					let hitError = processed_hits[i].errors[0];
+					let time = processed_hits[i].ln === false ? processed_hits[i].time : processed_hits[i].ln;
+					
+					if(processed_hits[i].errors.length > 1) {
+						hitError = processed_hits[i].errors.reduce((a,b)=> a+b,0) / processed_hits[i].errors.length;
+					}
+
+					if (hitError <= od_300g_ms && hitError >= -(od_300g_ms)) {
+						hit_300g_array.push({
+							x: time,
+							y: hitError
+						});
+					}
+					else if (hitError <= od_300_ms && hitError >= -(od_300_ms)) {
+						hit_300_array.push({
+							x: time,
+							y: hitError
+						});
+					}
+					else if (hitError <= od_200_ms && hitError >= -(od_200_ms)) {
+						hit_200_array.push({
+							x: time,
+							y: hitError
+						});
+					}
+					else if (hitError <= od_100_ms && hitError >= -(od_100_ms)) {
+						hit_100_array.push({
+							x: time,
+							y: hitError
+						});
+					}
+					else if (hitError <= od_50_ms && hitError >= -(od_50_ms)) {
+						hit_50_array.push({
+							x: time,
+							y: hitError
+						});
+					}
+					else {
+						hit_miss_array.push({
+							x: time,
+							y: hitError
+						});
+					}
+				}
+
+				prev_hitErrorArray_length = osu_status.gameplay.hits.hitErrorArray.length;
+			}
+		}
+		else {
 			//hit_array = [];
 
 			hit_miss_array = [];
@@ -527,33 +591,42 @@ socket.onmessage = async event => {
 			hit_200_array = [];
 			hit_300_array = [];
 			hit_300g_array = [];
-
-			prev_hitErrorArray_length = 0;
-
-			if (!always_show) plot_canvas.style.display = "none";
 		}
-		else {
-			if (((hit_300g_array.length + hit_300_array.length + hit_200_array.length + hit_100_array.length + hit_50_array.length + hit_miss_array.length) != 0 && osu_status.menu.state == 7) || (osu_status.menu.state == 2 && !result_only) || always_show) plot_canvas.style.display = "";
-		}
+	}
 
-		//plot_chart.data.datasets[0].data = hit_array;
+	if (osu_status.menu.state != 7 && osu_status.menu.state != 2) {
+		//hit_array = [];
 
-		plot_chart.data.datasets[0].data = hit_300g_array;
-		plot_chart.data.datasets[1].data = hit_300_array;
-		plot_chart.data.datasets[2].data = hit_200_array;
-		plot_chart.data.datasets[3].data = hit_100_array;
-		plot_chart.data.datasets[4].data = hit_50_array;
-		plot_chart.data.datasets[5].data = hit_miss_array;
-		if (etterna_mode) {
-			plot_chart.options.scales.yAxes[0].ticks.min = -(od_miss_ms);
-			plot_chart.options.scales.yAxes[0].ticks.max = od_miss_ms;
-		}
-		else {
-			plot_chart.options.scales.yAxes[0].ticks.min = -(od_50_ms);
-			plot_chart.options.scales.yAxes[0].ticks.max = od_50_ms;
-		}
-	} else {
-		GenerateFromReplay(osu_status);
+		hit_miss_array = [];
+		hit_50_array = [];
+		hit_100_array = [];
+		hit_200_array = [];
+		hit_300_array = [];
+		hit_300g_array = [];
+
+		prev_hitErrorArray_length = 0;
+
+		if (!always_show) plot_canvas.style.display = "none";
+	}
+	else {
+		if (((hit_300g_array.length + hit_300_array.length + hit_200_array.length + hit_100_array.length + hit_50_array.length + hit_miss_array.length) != 0 && osu_status.menu.state == 7) || (osu_status.menu.state == 2 && !result_only) || always_show) plot_canvas.style.display = "";
+	}
+
+	//plot_chart.data.datasets[0].data = hit_array;
+
+	plot_chart.data.datasets[0].data = hit_300g_array;
+	plot_chart.data.datasets[1].data = hit_300_array;
+	plot_chart.data.datasets[2].data = hit_200_array;
+	plot_chart.data.datasets[3].data = hit_100_array;
+	plot_chart.data.datasets[4].data = hit_50_array;
+	plot_chart.data.datasets[5].data = hit_miss_array;
+	if (etterna_mode) {
+		plot_chart.options.scales.yAxes[0].ticks.min = -(od_miss_ms);
+		plot_chart.options.scales.yAxes[0].ticks.max = od_miss_ms;
+	}
+	else {
+		plot_chart.options.scales.yAxes[0].ticks.min = -(od_50_ms);
+		plot_chart.options.scales.yAxes[0].ticks.max = od_50_ms;
 	}
 
 	//console.timeEnd("messageEvent");
@@ -562,7 +635,8 @@ socket.onmessage = async event => {
 
 socketData.onmessage = async event => {
 	try {
-	data = JSON.parse(event.data);
+		data = JSON.parse(event.data);
+		//console.log(data);
 	}catch(e){}
 }
 
@@ -591,9 +665,17 @@ function GetBeatmapCache(song_path) {
             success: function (response) {
 				loaded_last = song_path;
 				beatmap = response;
-				hit_objects = [];
+				columns = {};
 				replay_parse_index = 2;
 				replay_hits = [];
+				hit_miss_array = [];
+				hit_50_array = [];
+				hit_100_array = [];
+				hit_200_array = [];
+				hit_300_array = [];
+				hit_300g_array = [];
+				processed_hits = [];
+				state = {};
 				parseHitObjects();
 				resolve();
             },
@@ -605,7 +687,8 @@ function GetBeatmapCache(song_path) {
 
 }
 
-let hit_objects = [];
+let columns = {};
+let keys = 4;
 function parseHitObjects() {
 	let objects = false;
 	beatmap.split(/\r?\n/).forEach((line) => {
@@ -618,8 +701,13 @@ function parseHitObjects() {
 			if(worst_idea_ever_to_mark_ln_end_please_peppy_why.length == 6) {
 				ln_end = worst_idea_ever_to_mark_ln_end_please_peppy_why[0];
 			}
+			let current_column = Math.trunc(d[0]/512*keys);
 
-			hit_objects.push({
+			if(!columns[current_column]) {
+				columns[current_column] = [];
+			}
+
+			columns[current_column].push({
 				x: d[0],
 				y: d[1],
 				time: d[2],
@@ -630,45 +718,86 @@ function parseHitObjects() {
 
 		if(line == "[HitObjects]") objects = true;
 	});
-	console.log(hit_objects);
 }
 
 let replay_parse_index = 2;
 let replay_hits = [];
+let processed_hits = [];
+let state = {};
 function GenerateFromReplay(osu_status) {
 	if(!data.hit_events) return;
 	
 	GetBeatmapCache(osu_status.menu.bm.path.folder + "/" + osu_status.menu.bm.path.file).then(() => {
-		let keys = osu_status.menu.bm.stats.memoryCS;
-		let state = 0;
 		
+		if(replay_parse_index > data.hit_events.length) {
+			console.log("Refresh");
+			columns = {};
+			replay_parse_index = 2;
+			replay_hits = [];
+			hit_miss_array = [];
+			hit_50_array = [];
+			hit_100_array = [];
+			hit_200_array = [];
+			hit_300_array = [];
+			hit_300g_array = [];
+			processed_hits = [];
+			state = {};
+			parseHitObjects();
+		}
+		// Add latest hits from new replay data
 		for(replay_parse_index; replay_parse_index < data.hit_events.length; replay_parse_index++) {
 			let event = data.hit_events[replay_parse_index];
 
-			if(event.X<100 && event.X>=0 && event.X != state) {
-				let previous = numToString(state, 2, keys);
+			if(event.X<100 && event.X>=0 && event.X != state && event.TimeStamp >= -100000 && event.TimeStamp <= 100000000) {
 				let current = numToString(event.X, 2, keys);
 
 				for(let k = 0; k < keys; k++) {
-					let previous_k = previous.charAt(k);
 					let current_k = current.charAt(k);
 
-					if(previous_k != current_k) {
+					if(state[k] === undefined) state[k] = 0;
+
+					if(state[k] != current_k) {
 						let hit = {
 							time: event.TimeStamp,
-							column: k
+							column: 3-k
 						};
-						if(previous_k == 0) {
+						if(state[k] == 0) {
 							hit.type = "press";
 						} else {
 							hit.type = "release";
 						}
+						state[k] = current_k;
 						replay_hits.push(hit);
-						console.log(hit);
 					}
 				}
-				
-				state = event.X;
+			}
+		}
+
+		let hit;
+		while(hit = replay_hits.shift()) {
+			let note = columns[hit.column][0];
+			// console.log(hit);
+			// console.log(note);
+			let hitError;
+			
+			if(hit.type == "press") {
+				hitError = hit.time - note.time;
+			} else if (hit.type == "release") {
+				if(note.ln === false) continue; 
+				hitError = hit.time - note.ln;
+			}
+			
+			let found = false;
+			
+			if (hitError >= -(od_miss_ms)){
+				found = true;
+			}
+
+			if(found) {
+				note.errors.push(hitError);
+				processed_hits.push(note);
+				if(note.ln !== false && hit.type != "release") continue;
+				columns[hit.column].shift();
 			}
 		}
 	})
