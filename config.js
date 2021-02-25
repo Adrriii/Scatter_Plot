@@ -3,7 +3,7 @@
 
 const result_only = false;
 const etterna_mode = true;
-const audio_base_plot = true;
+const audio_base_plot = false;
 
 const plot_width = 905;
 const plot_height = 350;

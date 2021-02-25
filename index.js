@@ -518,8 +518,11 @@ socket.onmessage = async event => {
 			hit_300_array = [];
 			hit_300g_array = [];
 		}
+		console.log("--------------");
+		plot_update = true;
 	} else {
 		GenerateFromReplay(osu_status);
+		data_update = true;
 
 		if (processed_hits) {
 			if (processed_hits.length == 0) {
@@ -630,21 +633,33 @@ socket.onmessage = async event => {
 	}
 
 	//console.timeEnd("messageEvent");
-	plot_update = true;
 };
 
 socketData.onmessage = async event => {
 	try {
 		data = JSON.parse(event.data);
-		//console.log(data);
+		console.log("Obtained data");
 	}catch(e){}
 }
 
+let data_update = true;
+function updateData() {
+	if(!data_update===true) return;
+	data_update = false;
+	socketData.send("poll");
+}
+
+setInterval(updateData, 250)
+
 setInterval(() => {
-	if(plot_update) {
+	if(plot_update === true) {
+		plot_update = false;
+		console.log("Update");
 		plot_chart.update()
+		console.log("Updated");
+		data_update = true;
 	}
-}, 50);
+}, 250);
 
 console.timeEnd("init");
 
@@ -653,9 +668,12 @@ let beatmap=null;
 function GetBeatmapCache(song_path) {
 	return new Promise((resolve, reject) => {
 		if(beatmap != null && loaded_last == song_path) {
+			if(beatmap == "working") reject();
 			resolve();
 			return;
 		}
+		beatmap = "working";
+		loaded_last = song_path;
 		let bm_path = "http://127.0.0.1:24050/Songs/" + encodeURIComponent(song_path);
 
 		$.ajax({
@@ -663,7 +681,6 @@ function GetBeatmapCache(song_path) {
             type: "GET",
             crossDomain: true,
             success: function (response) {
-				loaded_last = song_path;
 				beatmap = response;
 				columns = {};
 				replay_parse_index = 2;
@@ -680,6 +697,7 @@ function GetBeatmapCache(song_path) {
 				resolve();
             },
             error: function (xhr, status) {
+				beatmap = null;
             }
         });
 	})
@@ -713,7 +731,7 @@ function parseHitObjects() {
 				time: d[2],
 				ln: ln_end,
 				errors: []
-			})
+			});
 		}
 
 		if(line == "[HitObjects]") objects = true;
@@ -728,6 +746,7 @@ function GenerateFromReplay(osu_status) {
 	if(!data.hit_events) return;
 	
 	GetBeatmapCache(osu_status.menu.bm.path.folder + "/" + osu_status.menu.bm.path.file).then(() => {
+		if(beatmap == "working") return;
 		
 		if(replay_parse_index > data.hit_events.length) {
 			console.log("Refresh");
@@ -744,8 +763,12 @@ function GenerateFromReplay(osu_status) {
 			state = {};
 			parseHitObjects();
 		}
+		
 		// Add latest hits from new replay data
 		for(replay_parse_index; replay_parse_index < data.hit_events.length; replay_parse_index++) {
+			if(replay_parse_index%Math.floor(data.hit_events.length/100) == 0)
+				console.log("Currently at "+(replay_parse_index/data.hit_events.length)*100+"% of replay");
+
 			let event = data.hit_events[replay_parse_index];
 
 			if(event.X<100 && event.X>=0 && event.X != state && event.TimeStamp >= -100000 && event.TimeStamp <= 100000000) {
@@ -774,7 +797,10 @@ function GenerateFromReplay(osu_status) {
 		}
 
 		let hit;
+		let changed = false;
+		let change_log = null;
 		while(hit = replay_hits.shift()) {
+			if(!columns[hit.column].length > 0) continue;
 			let note = columns[hit.column][0];
 			// console.log(hit);
 			// console.log(note);
@@ -798,9 +824,16 @@ function GenerateFromReplay(osu_status) {
 				processed_hits.push(note);
 				if(note.ln !== false && hit.type != "release") continue;
 				columns[hit.column].shift();
+				
+				change_log = note;
+				changed = true;
 			}
 		}
-	})
+		if(changed) {
+			plot_update = true;
+			console.log(change_log);
+		}
+	}).catch(() => {})
 }
 
 function padStart(string, length, char) {
